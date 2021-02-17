@@ -1,0 +1,90 @@
+<!doctype html>
+<head>
+<script type="module">
+    function main() {
+        document.getElementById("prompt").addEventListener("submit", handleSubmit);
+        document.getElementById("command").addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                handleSubmit(e);
+            }
+        });
+    }
+
+    async function handleSubmit(event) {
+        event.preventDefault();
+        const commandEl = document.getElementById("command");
+        const command = commandEl.value;
+        if (!command) {
+            return
+        }
+
+        commandEl.value = "";
+        const resp = await fetch("/run", {
+            method: "POST",
+            body: command,
+        });
+        const json = await resp.json();
+
+        // Yuck
+        const logEl = document.getElementById("log");
+        let wrapperEl = document.createElement("details");
+        wrapperEl.open = true;
+        if (json.Err) {
+            wrapperEl.className = "failed";
+        }
+
+        const summaryEl = document.createElement("summary");
+        let codeEl = document.createElement("code");
+        logEl.append(wrapperEl);
+        wrapperEl.append(summaryEl);
+        summaryEl.append(codeEl);
+        codeEl.textContent = command;
+
+        function addPre(className, value) {
+            if (value) {
+                let pre = document.createElement("pre");
+                pre.className = className;
+                pre.textContent = value;
+                wrapperEl.append(pre);
+            }
+        }
+        addPre("stdout", json.Stdout)
+        addPre("stderr", json.Stderr)
+        addPre("err", json.Err && json.Err.Text)
+        console.log(json);
+
+        commandEl.focus();
+    }
+
+    window.onload = main;
+</script>
+<style>
+    details.failed {
+        background: lavenderblush;
+    }
+    details pre {
+        margin-left: 1.5em;
+    }
+    summary code,
+    .stdin {
+        color: green;
+    }
+    .stderr {
+        color: red;
+    }
+    .err {
+        color: olive;
+    }
+    #command {
+        height: 100px;
+        width: 90%;
+    }
+</style>
+</head>
+<body>
+    <div id="log"></div>
+    <form id="prompt">
+        <textarea name="command" id="command"></textarea>
+        <button type="submit">Run</button>
+    </form>
+</body>
