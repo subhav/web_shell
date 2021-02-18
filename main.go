@@ -8,7 +8,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
+	"github.com/buildkite/terminal-to-html/v3"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -37,7 +40,11 @@ func main() {
 	log.Fatal(http.ListenAndServe(*host+":"+strconv.Itoa(*port), nil))
 }
 
+var runMu sync.Mutex
+
 func HandleRun(w http.ResponseWriter, req *http.Request) {
+	runMu.Lock()
+	defer runMu.Unlock()
 	var stdout, stderr bytes.Buffer
 
 	commands, err := parser.Parse(req.Body, "")
@@ -48,7 +55,10 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 			log.Println(err)
 			return
 		}
-		err = runner.Run(context.Background(), commands)
+		// TODO: serve partial output instead of blocking
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err = runner.Run(ctx, commands)
 		if err != nil {
 			log.Println(err)
 		}
@@ -56,8 +66,8 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 
 	b, _ := json.Marshal(struct {
 		Stdout, Stderr string
-		Err error
-	}{stdout.String(), stderr.String(), err})
+		Err            error
+	}{string(terminal.Render(stdout.Bytes())), stderr.String(), err})
 
 	_, err = w.Write(b)
 	if err != nil {

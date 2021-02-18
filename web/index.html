@@ -40,6 +40,15 @@
         summaryEl.append(codeEl);
         codeEl.textContent = command;
 
+        function addHtml(className, value) {
+            if (value) {
+                let div = document.createElement("div");
+                div.classList.add("term-container");
+                div.classList.add(className);
+                div.innerHTML = value;
+                wrapperEl.append(div)
+            }
+        }
         function addPre(className, value) {
             if (value) {
                 let pre = document.createElement("pre");
@@ -48,22 +57,27 @@
                 wrapperEl.append(pre);
             }
         }
-        addPre("stdout", json.Stdout)
+        addHtml("stdout", json.Stdout)
         addPre("stderr", json.Stderr)
         addPre("err", json.Err && json.Err.Text)
         console.log(json);
 
-        commandEl.focus();
+        commandEl.focus()
+        document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
     }
 
     window.onload = main;
 </script>
+<link href="terminal.css" rel="stylesheet">
 <style>
     details.failed {
         background: lavenderblush;
     }
     details pre {
         margin-left: 1.5em;
+    }
+    .term-container {
+        margin: 1em 0 1em 1.5em;
     }
     summary code,
     .stdin {
