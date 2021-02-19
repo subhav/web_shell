@@ -8,6 +8,14 @@
                 handleSubmit(e);
             }
         });
+        document.getElementById("log").addEventListener("dblclick", function(e) {
+            for (let el of e.composedPath().reverse()) {
+                if (el.nodeName === "DETAILS") {
+                    el.open = !el.open;
+                    break;
+                }
+            }
+        })
     }
 
     async function handleSubmit(event) {
@@ -19,17 +27,35 @@
         }
 
         commandEl.value = "";
-        const resp = await fetch("/run", {
-            method: "POST",
-            body: command,
-        });
-        const json = await resp.json();
+        commandEl.disabled = true;
+        let json;
+        try {
+            const resp = await fetch("/run", {
+                method: "POST",
+                body: command,
+            });
+            json = await resp.json();
+        } catch (error) {
+            console.error(error);
+            commandEl.disabled = false;
+            return
+        }
 
+        updateLog(command, json);
+
+        document.title = json.Dir;
+
+        commandEl.disabled = false;
+        commandEl.focus()
+        document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
+    }
+
+    function updateLog(command, resp) {
         // Yuck
         const logEl = document.getElementById("log");
         let wrapperEl = document.createElement("details");
         wrapperEl.open = true;
-        if (json.Err) {
+        if (resp.Err) {
             wrapperEl.className = "failed";
         }
 
@@ -57,13 +83,10 @@
                 wrapperEl.append(pre);
             }
         }
-        addHtml("stdout", json.Stdout)
-        addPre("stderr", json.Stderr)
-        addPre("err", json.Err && json.Err.Text)
-        console.log(json);
-
-        commandEl.focus()
-        document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
+        addHtml("stdout", resp.Stdout)
+        addPre("stderr", resp.Stderr)
+        addPre("err", resp.Err && resp.Err.Text)
+        console.log(resp);
     }
 
     window.onload = main;

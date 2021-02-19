@@ -56,7 +56,7 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		// TODO: serve partial output instead of blocking
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 		defer cancel()
 		err = runner.Run(ctx, commands)
 		if err != nil {
@@ -65,9 +65,15 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 	}
 
 	b, _ := json.Marshal(struct {
+		Dir            string
 		Stdout, Stderr string
 		Err            error
-	}{string(terminal.Render(stdout.Bytes())), stderr.String(), err})
+	}{
+		runner.Dir,
+		string(terminal.Render(stdout.Bytes())),
+		stderr.String(),
+		err,
+	})
 
 	_, err = w.Write(b)
 	if err != nil {
