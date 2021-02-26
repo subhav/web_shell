@@ -1,4 +1,4 @@
-module github.com/raggedy/console/tools/sh_test
+module github.com/subhav/web_shell
 
 go 1.15
 
@@ -6,8 +6,8 @@ go 1.15
 
 require (
 	github.com/buildkite/terminal-to-html/v3 v3.6.1
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
+	github.com/creack/pty v1.1.11
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a // indirect
-	mvdan.cc/sh v2.6.4+incompatible // indirect
+	golang.org/x/term v0.0.0-20201117132131-f5c789dd3221 // indirect
 	mvdan.cc/sh/v3 v3.2.2
 )

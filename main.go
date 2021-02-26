@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/buildkite/terminal-to-html/v3"
+	"github.com/creack/pty"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -47,10 +49,23 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 	defer runMu.Unlock()
 	var stdout, stderr bytes.Buffer
 
+	ptmx, pts, err := pty.Open()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer func() {
+		ptmx.Close()
+		pts.Close()
+	}()
+	go func() {
+		io.Copy(&stdout, ptmx)
+	}()
+
 	commands, err := parser.Parse(req.Body, "")
 	if err == nil {
 		// Reset stdio of runner before running a new command
-		err = interp.StdIO(nil, &stdout, &stderr)(runner)
+		err = interp.StdIO(nil, pts, &stderr)(runner)
 		if err != nil {
 			log.Println(err)
 			return
