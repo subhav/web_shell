@@ -2,20 +2,21 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"flag"
-	"io"
-	"log"
-	"net/http"
-	"strconv"
-	"sync"
-	"time"
-
 	"github.com/buildkite/terminal-to-html/v3"
 	"github.com/creack/pty"
+	"io"
+	"io/ioutil"
+	"log"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
+	"net/http"
+	"os"
+	"path"
+	"strconv"
+	"sync"
+	"syscall"
 )
 
 var (
@@ -25,6 +26,8 @@ var (
 
 var runner *interp.Runner
 var parser *syntax.Parser
+
+var shell *BashShell
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -36,6 +39,11 @@ func main() {
 	}
 
 	parser = syntax.NewParser()
+
+	shell, err = NewBashShell()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	http.HandleFunc("/run", HandleRun)
 	http.Handle("/", http.FileServer(http.Dir("./web")))
@@ -58,25 +66,35 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 		ptmx.Close()
 		pts.Close()
 	}()
-	go func() {
-		io.Copy(&stdout, ptmx)
-	}()
+	go io.Copy(&stdout, ptmx)
 
-	commands, err := parser.Parse(req.Body, "")
-	if err == nil {
-		// Reset stdio of runner before running a new command
-		err = interp.StdIO(nil, pts, &stderr)(runner)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		// TODO: serve partial output instead of blocking
-		ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
-		defer cancel()
-		err = runner.Run(ctx, commands)
-		if err != nil {
-			log.Println(err)
-		}
+	dir, _ := ioutil.TempDir("", "webshell-*")
+	pipeName := path.Join(dir, "errpipe")
+	syscall.Mkfifo(pipeName, 0600)
+	// If you open only the read side, then you need to open with O_NONBLOCK
+	// and clear that flag after opening.
+	//	pipe, err := os.OpenFile(pipeName, os.O_RDONLY|syscall.O_NONBLOCK, 0600)
+	pipe, err := os.OpenFile(pipeName, os.O_RDWR, 0600)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer func() {
+		pipe.Close()
+		os.Remove(pipeName)
+		os.Remove(dir)
+	}()
+	go io.Copy(&stderr, pipe)
+
+	// Reset stdio of runner before running a new command
+	err = shell.StdIO(nil, pts, pipe)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	err = shell.Run(req.Body)
+	if err != nil {
+		log.Println(err)
 	}
 
 	b, _ := json.Marshal(struct {
