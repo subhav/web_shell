@@ -34,16 +34,17 @@ fi
 # -   messing with the debug vars (e.g. unset __cmd_run)
 # -   running exec ("exec bash", though maybe this should be intended behavior)
 # -   writing to fd 23 or 24
+# -   `return` breaks out of __cmd_run instead of erroring
 #
 # Security isn't really a concern, but reliability is.
 ################################################################################
 
 # Enable job control
 set -m
-# (Even if we don't do this, as long as you start bash with `-i`, then process
-# groups still seem to still get created unless you explicitly disable monitor
-# mode with `set +m`. Though, bash explicitly says "no job control" and monitor
-# mode is reportedly turned off,  Weird.)
+# (Even if we don't do this, as long as you start bash with `-i`, process groups
+# still seem to get created unless you explicitly disable monitor mode with
+# `set +m`. Though, bash explicitly says "no job control" and monitor mode is
+# reportedly turned off,  Weird.)
 # Notify (`set -b`) does not seem to work in a script like this.
 
 # Open command's stdin/out/err on fds 20-22
@@ -59,6 +60,9 @@ __cmd_restore_status() {
 __cmd_last_status=0
 __cmd_run() {
 	[[ $SHELLOPTS =~ (^|:)history($|:) ]] && history -s "$1"
+
+  # Disable top-level returns in the eval
+	alias return='[[ ${FUNCNAME[0]} != __cmd_run ]] && command return'
 
 	__cmd_restore_status "$__cmd_last_status" # Reset $? for the eval
 
@@ -76,8 +80,11 @@ __cmd_run() {
 	eval "{
 $1
 }" <&20- >&21- 2>&22-
+
 	__cmd_last_status=$? # Capture $?
-	# (No need to capture $!, because we don't run background jobs in this script)
+	# Should we capture $PIPESTATUS? Is it possible to restore it?
+
+	unalias return
 
 	echo "$__cmd_last_status"
 }
