@@ -34,10 +34,11 @@ fi
 # -   messing with the debug vars (e.g. unset __cmd_run)
 # -   running exec ("exec bash", though maybe this should be intended behavior)
 # -   writing to fd 23 or 24
-# -   `return` breaks out of __cmd_run instead of erroring
 #
 # Security isn't really a concern, but reliability is.
 ################################################################################
+
+unset LD_PRELOAD
 
 # Enable job control
 set -m
@@ -46,6 +47,13 @@ set -m
 # `set +m`. Though, bash explicitly says "no job control" and monitor mode is
 # reportedly turned off,  Weird.)
 # Notify (`set -b`) does not seem to work in a script like this.
+
+# Using return works because we're using source instead of eval.
+# However, this only works with one level of indirection.
+# For example, we can return out of `while :; do echo; done`.
+# We can't return out of `a() { echo; }; while :; do a; done`.
+# Also, I believe the signal mask gets propagated to children!
+#trap "return" SIGINT
 
 # Open command's stdin/out/err on fds 20-22
 __cmd_stdio() {
@@ -61,9 +69,6 @@ __cmd_last_status=0
 __cmd_run() {
 	[[ $SHELLOPTS =~ (^|:)history($|:) ]] && history -s "$1"
 
-  # Disable top-level returns in the eval
-	alias return='[[ ${FUNCNAME[0]} != __cmd_run ]] && command return'
-
 	__cmd_restore_status "$__cmd_last_status" # Reset $? for the eval
 
 	# The command group forces the syntax to be checked before execution.
@@ -75,18 +80,20 @@ __cmd_run() {
 	#
 	# The script's stdio gets temporarily copied to new fds (23-25) and the
 	# saved fds get copied even though we mark them as closed here.
-	# So, fds 0-2,10-12(copies of 20-22),23-25(copies of 0-2) are all set in
-	# the eval. However, all the extra fds are set to close on exec this way.
-	eval "{
+	# So, fds 0-2,10-12(copies of 20-22),23-25(copies of 0-2),63(proc subst) are
+	# all set in the eval. However, all the extra fds are set to close on exec
+	# this way.
+
+  # Using source instead of eval makes `return` not break things
+  # But, now the echo runs in a subshell and there's an extra pipe :/
+	source <(echo "{
 $1
-}" <&20- >&21- 2>&22-
+}") <&20- >&21- 2>&22-
 
 	__cmd_last_status=$? # Capture $?
 	# Should we capture $PIPESTATUS? Is it possible to restore it?
 
-	unalias return
-
-	echo "$__cmd_last_status"
+	echo "{\"Exit\": $__cmd_last_status}"
 }
 
 # Main Loop
@@ -97,7 +104,7 @@ $1
 # set, but we can leave it to the user to do that.
 # This is the same behavior as setting the shopt "lithist", with or without
 # HISTTIMEFORMAT.
-[[ -v __cmd_writeback_history ]] && set -o history
+[[ -v __cmd_writeback_history ]] && set -o history; \
 while read -r -d $'\0' method args; do
 	case $method in
 	"stdio")
@@ -106,6 +113,17 @@ while read -r -d $'\0' method args; do
 		;;
 	"run")
 		__cmd_run "$args"
+		;;
+# For debugging
+	"vars")
+		declare -p
+		;;
+	"jobs")
+		jobs -l
+		;;
+	"lsof")
+		lsof -p $PPID
+		lsof -p $$
 		;;
 	"exit")
 		exit 0

@@ -1,3 +1,8 @@
+# I should try to abuse fish's lack of subshells somehow. Things that look like subshells
+# in fish like command substitutions run synchronously and change state.
+
+set -e LD_PRELOAD
+
 set __cmd_stdin ""
 set __cmd_stdout ""
 set __cmd_stderr ""
@@ -18,7 +23,7 @@ function __cmd_run -a command --no-scope-shadowing
 	__cmd_restore_status $__cmd_last_status
 	echo "begin $command "\n" ;end <$__cmd_stdin" | source >$__cmd_stdout 2>$__cmd_stdout
 	set -g __cmd_last_status $status
-	echo $__cmd_last_status
+	echo "{\"Exit\": $__cmd_last_status"}
 end
 
 status --job-control interactive

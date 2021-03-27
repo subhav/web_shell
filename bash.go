@@ -1,14 +1,18 @@
+//go:generate gcc -shared -fPIC -o inject_tcsetpgrp.so inject_tcsetpgrp.c
+
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
-	"strings"
+	"path"
+	"strconv"
 )
 
 var (
@@ -20,6 +24,9 @@ type BashShell struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
+
+	exitCh chan int
+	fgPgid int
 }
 
 func NewBashShell() (*BashShell, error) {
@@ -33,9 +40,16 @@ func NewBashShell() (*BashShell, error) {
 	// end of the pty.
 	// (This also means if webshell is running as a session leader, then it
 	// should open any pts with O_NOCTTY set.)
-	//	shell.cmd.SysProcAttr = &syscall.SysProcAttr{
-	//		Setsid: true,
-	//	}
+//	shell.cmd.SysProcAttr = &syscall.SysProcAttr{
+//		//Setsid: true,		// new session doesn't work because it steals term
+//		Setpgid: true,		// creating a new pgid doesn't work if pg leader
+//		Pgid: 0,
+//	}
+
+	cwd, _ := os.Getwd()
+	injectPath := path.Join(cwd, "inject_tcsetpgrp.so")
+	shell.cmd.Env = append(os.Environ(), "LD_PRELOAD="+injectPath)
+
 	shell.stdin, _ = shell.cmd.StdinPipe()
 	shell.stdout, _ = shell.cmd.StdoutPipe()
 	shell.cmd.Stderr = os.Stderr
@@ -44,7 +58,51 @@ func NewBashShell() (*BashShell, error) {
 		return nil, err
 	}
 
+	shell.exitCh = make(chan int)
+	go shell.readLoop()
+
 	return shell, nil
+}
+
+// Read different types of messages from the command server's stdout.
+func (b *BashShell) readLoop() {
+	dec := json.NewDecoder(b.stdout)
+	for dec.More() {
+		var m struct {
+			Pgid int
+			Exit int
+		}
+		err := dec.Decode(&m)
+		if err != nil {
+			close(b.exitCh)
+			log.Println(err)
+			//return
+		}
+
+		// Switch on message type
+		if m.Pgid > 0 {
+			log.Print("Foreground PGID set to ", m.Pgid)
+			b.fgPgid = m.Pgid
+		} else {
+			b.exitCh <- m.Exit
+			b.fgPgid = m.Pgid
+		}
+	}
+
+	close(b.exitCh)
+}
+
+func readstringloop(r io.Reader, exitCh chan<- string) {
+//	for {
+//		exit, err := bufio.NewReader(r).ReadString('\n')
+//		if err != nil {
+//			close(exitCh)
+//			log.Println(err)
+//			return
+//		}
+//		exit = strings.TrimSpace(exit)
+//		exitCh <- exit
+//	}
 }
 
 func (b *BashShell) Close() error {
@@ -74,13 +132,9 @@ func (b *BashShell) Run(cmd io.Reader) error {
 	// - we're able to read or get EOF
 	// - bash is trying to read from us?
 	// - a context expires
-	exit, err := bufio.NewReader(b.stdout).ReadString('\n')
-	if err != nil {
-		return err
+	exit := <-b.exitCh
+	if exit != 0 {
+		return errors.New("exit code: " + strconv.Itoa(exit))
 	}
-	exit = strings.TrimSpace(exit)
-	if exit != "0" {
-		return errors.New("exit code: " + exit)
-	}
-	return err
+	return nil
 }
