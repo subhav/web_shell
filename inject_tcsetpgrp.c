@@ -1,10 +1,11 @@
 #include <unistd.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 // The functions here are called after redirections are applied.
 // TODO: Hardcoding fd 24 is fragile. Either copy fd 1 in the script instead
-//       or look for the right fd in the undo stack.
+//       or look for the right fd in the bash undo stack.
+// Fish does the sane thing and doesn't move its own file descriptors around.
+// Script stdout is still fd 1 and command's out,err,in are fds 6,7,8
 #define STDOUT_FD 24
 
 // TODO: Print stuff in debug builds
@@ -18,22 +19,13 @@
 // If we wanted to clear LD_PRELOAD here, we'd have to change environ directly.
 // More info at: https://stackoverflow.com/questions/3275015/ld-preload-affects-new-child-even-after-unsetenvld-preload
 
-static pid_t last_pgrp = 0;
-
 pid_t tcgetpgrp(int fd) {
-    if (last_pgrp == 0) {
-        pid_t pgid = getpgid(0);
-//        dprintf(STDOUT_FD, "[INJECT get first %d]", pgid);
-        return pgid;
-    }
-//    dprintf(STDOUT_FD, "[current pgid %d]", getpgid(0));
-//    dprintf(STDOUT_FD, "[INJECT get %d]", last_pgrp);
-    return last_pgrp;
+//    dprintf(STDOUT_FD, "[INJECT get %d]", getpgid(0));
+    return getpgid(0);
 }
 
 int tcsetpgrp(int fd, pid_t pgrp) {
 //    dprintf(STDOUT_FD, "[INJECT set %d]", pgrp);
     dprintf(STDOUT_FD, "{\"Pgid\": %d}\n", pgrp);
-    last_pgrp = pgrp;
     return 0;
 }

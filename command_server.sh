@@ -52,8 +52,10 @@ set -m
 # However, this only works with one level of indirection.
 # For example, we can return out of `while :; do echo; done`.
 # We can't return out of `a() { echo; }; while :; do a; done`.
-# Also, I believe the signal mask gets propagated to children!
-#trap "return" SIGINT
+# Also, I believe the signal mask gets propagated to children!?
+# TODO: if job control is off, does this still work? No.
+# Without this trap, bash exits if a child process gets a SIGINT too!
+trap "return" SIGINT
 
 # Open command's stdin/out/err on fds 20-22
 __cmd_stdio() {
@@ -84,8 +86,8 @@ __cmd_run() {
 	# all set in the eval. However, all the extra fds are set to close on exec
 	# this way.
 
-  # Using source instead of eval makes `return` not break things
-  # But, now the echo runs in a subshell and there's an extra pipe :/
+	# Using source instead of eval makes `return` not break things
+	# But, now the echo runs in a subshell and there's an extra pipe :/
 	source <(echo "{
 $1
 }") <&20- >&21- 2>&22-
@@ -93,7 +95,13 @@ $1
 	__cmd_last_status=$? # Capture $?
 	# Should we capture $PIPESTATUS? Is it possible to restore it?
 
-	echo "{\"Exit\": $__cmd_last_status}"
+	# Make $PWD a more valid JSON string by escaping quotes and backslashes.
+	local dir="${PWD//\\/\\\\}"
+	dir="${dir//\"/\\\"}"
+	dir="${dir//$'\n'/\n}"
+	dir="${dir//$'\t'/\t}"
+
+	echo "{\"Exit\": $__cmd_last_status, \"Dir\": \"$dir\"}"
 }
 
 # Main Loop
@@ -104,7 +112,7 @@ $1
 # set, but we can leave it to the user to do that.
 # This is the same behavior as setting the shopt "lithist", with or without
 # HISTTIMEFORMAT.
-[[ -v __cmd_writeback_history ]] && set -o history; \
+[[ -v __cmd_writeback_history ]] && set -o history
 while read -r -d $'\0' method args; do
 	case $method in
 	"stdio")
@@ -114,7 +122,7 @@ while read -r -d $'\0' method args; do
 	"run")
 		__cmd_run "$args"
 		;;
-# For debugging
+	# For debugging
 	"vars")
 		declare -p
 		;;

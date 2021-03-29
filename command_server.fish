@@ -3,6 +3,12 @@
 
 set -e LD_PRELOAD
 
+function __cmd_trap_int --on-signal INT
+    return
+end
+
+status --job-control full
+
 set __cmd_stdin ""
 set __cmd_stdout ""
 set __cmd_stderr ""
@@ -21,12 +27,10 @@ set __cmd_last_status $status
 # We can do the same thing, simplifying its behavior.
 function __cmd_run -a command --no-scope-shadowing
 	__cmd_restore_status $__cmd_last_status
-	echo "begin $command "\n" ;end <$__cmd_stdin" | source >$__cmd_stdout 2>$__cmd_stdout
+	echo "begin $command "\n" ;end <$__cmd_stdin" | source >$__cmd_stdout 2>$__cmd_stderr
 	set -g __cmd_last_status $status
-	echo "{\"Exit\": $__cmd_last_status"}
+	echo "{\"Exit\": $__cmd_last_status}"
 end
-
-status --job-control interactive
 
 while read --null method args
 	switch $method

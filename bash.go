@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"syscall"
 )
 
 var (
@@ -21,6 +23,8 @@ var (
 )
 
 type BashShell struct {
+	dir    string
+
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
@@ -32,7 +36,7 @@ type BashShell struct {
 func NewBashShell() (*BashShell, error) {
 	shell := &BashShell{}
 
-	shell.cmd = exec.Command(*shellPath, "-i", *shellScript)
+	shell.cmd = exec.Command(*shellPath, "--login", "-i", *shellScript)
 	// Can't use setsid here. If bash is a session leader, then the operating
 	// system will allocate any non-controlling terminal it opens as the
 	// controlling terminal of that session. More concretely, if we call StdIO()
@@ -71,25 +75,40 @@ func (b *BashShell) readLoop() {
 		var m struct {
 			Pgid int
 			Exit int
+			Dir string
 		}
 		err := dec.Decode(&m)
 		if err != nil {
-			close(b.exitCh)
 			log.Println(err)
+			//close(b.exitCh)
 			//return
 		}
 
 		// Switch on message type
+		log.Printf("%+v", m)
 		if m.Pgid > 0 {
-			log.Print("Foreground PGID set to ", m.Pgid)
 			b.fgPgid = m.Pgid
 		} else {
 			b.exitCh <- m.Exit
 			b.fgPgid = m.Pgid
+			b.dir = m.Dir
 		}
 	}
 
 	close(b.exitCh)
+}
+
+// Attempt to send a sigint to foreground pgrp
+func (b *BashShell) cancel() {
+	var err error
+	if b.fgPgid > 0 {
+		err = syscall.Kill(-b.fgPgid, syscall.SIGINT)
+	} else {
+		err = b.cmd.Process.Signal(os.Interrupt)
+	}
+	if err != nil {
+		log.Print(err)
+	}
 }
 
 func readstringloop(r io.Reader, exitCh chan<- string) {
@@ -111,11 +130,15 @@ func (b *BashShell) Close() error {
 	return b.cmd.Wait()
 }
 
+func (b *BashShell) Dir() string {
+	return b.dir
+}
+
 func (b *BashShell) StdIO(in, out, err *os.File) error {
 	fmt.Fprintln(b.stdin, "stdio")
 	for _, f := range []*os.File{in, out, err} {
 		if f == nil {
-			fmt.Fprintln(b.stdin, "/dev/null")
+			fmt.Fprintln(b.stdin, os.DevNull)
 		} else {
 			fmt.Fprintln(b.stdin, f.Name())
 		}
@@ -124,17 +147,24 @@ func (b *BashShell) StdIO(in, out, err *os.File) error {
 	return nil
 }
 
-func (b *BashShell) Run(cmd io.Reader) error {
+func (b *BashShell) Run(ctx context.Context, cmd io.Reader) error {
 	fmt.Fprintln(b.stdin, "run")
 	io.Copy(b.stdin, cmd)
 	b.stdin.Write([]byte{0})
-	// This read blocks. We should instead wait until either:
-	// - we're able to read or get EOF
-	// - bash is trying to read from us?
-	// - a context expires
-	exit := <-b.exitCh
-	if exit != 0 {
-		return errors.New("exit code: " + strconv.Itoa(exit))
+	// What if?
+	// - bash is trying to read from us
+	// - bash dies
+	select {
+	case exit := <-b.exitCh:
+		if exit != 0 {
+			return errors.New("exit code: " + strconv.Itoa(exit))
+		}
+	case <-ctx.Done():
+		b.cancel()
+		exit := <-b.exitCh
+		if exit != 0 {
+			return errors.New("exit code: " + strconv.Itoa(exit))
+		}
 	}
 	return nil
 }

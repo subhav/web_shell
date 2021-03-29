@@ -8,6 +8,13 @@
                 handleSubmit(e);
             }
         });
+        document.addEventListener('keydown', function (e) {
+            // Ctrl keys seem to only work with keydown
+            // TODO: Only if currently running a command
+            if (e.key === 'c' && e.ctrlKey) {
+                handleCancel(e);
+            }
+        });
         document.getElementById("log").addEventListener("dblclick", function(e) {
             for (let el of e.composedPath().reverse()) {
                 if (el.nodeName === "DETAILS") {
@@ -26,6 +33,8 @@
             return
         }
 
+        let wrapper = createLogElement(command);
+
         commandEl.value = "";
         commandEl.disabled = true;
         let json;
@@ -41,23 +50,19 @@
             return
         }
 
-        updateLog(command, json);
+        updateLogElement(wrapper, json);
 
-        document.title = json.Dir;
+        document.getElementById("dir").textContent = json.Dir
 
         commandEl.disabled = false;
         commandEl.focus()
         document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
     }
 
-    function updateLog(command, resp) {
+    function createLogElement(command) {
         // Yuck
         const logEl = document.getElementById("log");
         let wrapperEl = document.createElement("details");
-        wrapperEl.open = true;
-        if (resp.Err) {
-            wrapperEl.className = "failed";
-        }
 
         const summaryEl = document.createElement("summary");
         let codeEl = document.createElement("code");
@@ -66,13 +71,22 @@
         summaryEl.append(codeEl);
         codeEl.textContent = command;
 
+        return wrapperEl;
+    }
+
+    function updateLogElement(wrapper, resp) {
+        wrapper.open = true;
+        if (resp.Err) {
+            wrapper.className = "failed";
+        }
+
         function addHtml(className, value) {
             if (value) {
                 let div = document.createElement("div");
                 div.classList.add("term-container");
                 div.classList.add(className);
                 div.innerHTML = value;
-                wrapperEl.append(div)
+                wrapper.append(div);
             }
         }
         function addPre(className, value) {
@@ -80,13 +94,19 @@
                 let pre = document.createElement("pre");
                 pre.className = className;
                 pre.textContent = value;
-                wrapperEl.append(pre);
+                wrapper.append(pre);
             }
         }
         addHtml("stdout", resp.Stdout)
         addPre("stderr", resp.Stderr)
         addPre("err", resp.Err && resp.Err.Text)
         console.log(resp);
+    }
+
+    async function handleCancel(event) {
+        await fetch("/cancel", {
+            method: "POST",
+        });
     }
 
     window.onload = main;
@@ -120,6 +140,7 @@
 </head>
 <body>
     <div id="log"></div>
+    <div id="dir"></div>
     <form id="prompt">
         <textarea name="command" id="command"></textarea>
         <button type="submit">Run</button>

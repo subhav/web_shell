@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"github.com/buildkite/terminal-to-html/v3"
@@ -9,8 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"mvdan.cc/sh/v3/interp"
-	"mvdan.cc/sh/v3/syntax"
 	"net/http"
 	"os"
 	"path"
@@ -22,40 +21,49 @@ import (
 var (
 	host = flag.String("host", "localhost", "Hostname at which to run the server")
 	port = flag.Int("port", 3000, "Port at which to run the server over HTTP")
+	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
 )
 
-var runner *interp.Runner
-var parser *syntax.Parser
+var shell Shell
 
-var shell *BashShell
+type Shell interface {
+	StdIO(*os.File, *os.File, *os.File) error
+	Run(context.Context, io.Reader) error
+	Dir() string
+}
 
 func main() {
+	flag.Parse()
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	var err error
-	runner, err = interp.New()
-	if err != nil {
-		log.Fatal(err)
+
+	if *gosh {
+		shell, err = NewGoShell()
+	} else {
+		shell, err = NewBashShell()
 	}
-
-	parser = syntax.NewParser()
-
-	shell, err = NewBashShell()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	http.HandleFunc("/run", HandleRun)
+	http.HandleFunc("/cancel", HandleCancel)
 	http.Handle("/", http.FileServer(http.Dir("./web")))
 	log.Fatal(http.ListenAndServe(*host+":"+strconv.Itoa(*port), nil))
 }
 
 var runMu sync.Mutex
+var runCancel context.CancelFunc = func() {}
 
 func HandleRun(w http.ResponseWriter, req *http.Request) {
 	runMu.Lock()
 	defer runMu.Unlock()
 	var stdout, stderr bytes.Buffer
+	var runCtx context.Context
+
+	runCtx, runCancel = context.WithCancel(context.Background())
+	defer runCancel()
 
 	ptmx, pts, err := pty.Open()
 	if err != nil {
@@ -92,7 +100,7 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 		log.Println(err)
 		return
 	}
-	err = shell.Run(req.Body)
+	err = shell.Run(runCtx, req.Body)
 	if err != nil {
 		log.Println(err)
 	}
@@ -102,7 +110,7 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 		Stdout, Stderr string
 		Err            error
 	}{
-		runner.Dir,
+		shell.Dir(),
 		string(terminal.Render(stdout.Bytes())),
 		stderr.String(),
 		err,
@@ -112,4 +120,9 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
+}
+
+func HandleCancel(w http.ResponseWriter, req *http.Request) {
+	log.Print("Received cancel")
+	runCancel()
 }
