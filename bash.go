@@ -1,4 +1,4 @@
-//go:generate gcc -shared -fPIC -o inject_tcsetpgrp.so inject_tcsetpgrp.c
+//go:generate gcc -shared -fPIC -o lib/inject_tcsetpgrp.so lib/inject_tcsetpgrp.c
 
 package main
 
@@ -20,7 +20,14 @@ import (
 var (
 	shellPath   = flag.String("shell", "/bin/bash", "Path to shell interpreter")
 	shellScript = flag.String("shell_script", "command_server.sh", "Command server script")
+	shellPreload *string
 )
+
+func init() {
+	cwd, _ := os.Getwd()
+	injectPath := path.Join(cwd, "lib/inject_tcsetpgrp.so")
+	shellPreload = flag.String("shell_preload", injectPath, "Path to shared object to link into the shell")
+}
 
 type BashShell struct {
 	dir    string
@@ -50,9 +57,8 @@ func NewBashShell() (*BashShell, error) {
 //		Pgid: 0,
 //	}
 
-	cwd, _ := os.Getwd()
-	injectPath := path.Join(cwd, "inject_tcsetpgrp.so")
-	shell.cmd.Env = append(os.Environ(), "LD_PRELOAD="+injectPath)
+
+	shell.cmd.Env = append(os.Environ(), "LD_PRELOAD="+*shellPreload)
 
 	shell.stdin, _ = shell.cmd.StdinPipe()
 	shell.stdout, _ = shell.cmd.StdoutPipe()
@@ -73,6 +79,7 @@ func (b *BashShell) readLoop() {
 	dec := json.NewDecoder(b.stdout)
 	for dec.More() {
 		var m struct {
+			Done bool
 			Pgid int
 			Exit int
 			Dir string
@@ -88,9 +95,11 @@ func (b *BashShell) readLoop() {
 		log.Printf("%+v", m)
 		if m.Pgid > 0 {
 			b.fgPgid = m.Pgid
-		} else {
+		} else if m.Done {
 			b.exitCh <- m.Exit
 			b.fgPgid = m.Pgid
+			b.dir = m.Dir
+		} else {
 			b.dir = m.Dir
 		}
 	}
@@ -109,19 +118,6 @@ func (b *BashShell) cancel() {
 	if err != nil {
 		log.Print(err)
 	}
-}
-
-func readstringloop(r io.Reader, exitCh chan<- string) {
-//	for {
-//		exit, err := bufio.NewReader(r).ReadString('\n')
-//		if err != nil {
-//			close(exitCh)
-//			log.Println(err)
-//			return
-//		}
-//		exit = strings.TrimSpace(exit)
-//		exitCh <- exit
-//	}
 }
 
 func (b *BashShell) Close() error {

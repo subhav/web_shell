@@ -1,3 +1,10 @@
+// We need to insert hooks into bash to report state changes that happen
+// during the execution of a command.
+//
+// This includes:
+// - attempts to set the foreground process group (before executing a pipeline)
+// - cwd updates?
+
 #include <unistd.h>
 #include <stdio.h>
 
@@ -19,13 +26,12 @@
 // If we wanted to clear LD_PRELOAD here, we'd have to change environ directly.
 // More info at: https://stackoverflow.com/questions/3275015/ld-preload-affects-new-child-even-after-unsetenvld-preload
 
+// TODO: Ideally, this would always return bash's pgid
 pid_t tcgetpgrp(int fd) {
-//    dprintf(STDOUT_FD, "[INJECT get %d]", getpgid(0));
     return getpgid(0);
 }
 
 int tcsetpgrp(int fd, pid_t pgrp) {
-//    dprintf(STDOUT_FD, "[INJECT set %d]", pgrp);
     dprintf(STDOUT_FD, "{\"Pgid\": %d}\n", pgrp);
     return 0;
 }
