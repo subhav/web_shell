@@ -2,6 +2,7 @@
 // during the execution of a command.
 //
 // This includes:
+// - making bash think it's running in a terminal, by overloading tcgetprgp
 // - attempts to set the foreground process group (before executing a pipeline)
 // - cwd updates?
 

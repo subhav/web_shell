@@ -1,3 +1,16 @@
+// Prototype Shell UI, for the Go sh package and external shell interpreters.
+//
+// Each command is allocated a pty for stdout and a (named) pipe for stderr.
+//
+// This doesn't work for every command:
+// - If `less` can't open `/dev/tty`, it READS from stderr! Not stdin.
+//   (because stdin might be the read end of a pipe)
+//   alias less="less 2<&0" works, but wouldn't work in a pipe.
+// - sudo reads from /dev/tty by default, but you can tell it to use stdin
+//   with `sudo -S`. alias sudo="sudo -S" works.
+// Apparently according to POSIX, stderr is supposed to be open for both
+// reading and writing...
+// An anonymous pipe would be better, but would require fd passing.
 package main
 
 import (

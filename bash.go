@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	shellPath   = flag.String("shell", "/bin/bash", "Path to shell interpreter")
-	shellScript = flag.String("shell_script", "command_server.sh", "Command server script")
+	shellPath    = flag.String("shell", "/bin/bash", "Path to shell interpreter")
+	shellScript  = flag.String("shell_script", "command_server.sh", "Command server script")
 	shellPreload *string
 )
 
@@ -30,7 +30,7 @@ func init() {
 }
 
 type BashShell struct {
-	dir    string
+	dir string
 
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
@@ -51,12 +51,11 @@ func NewBashShell() (*BashShell, error) {
 	// end of the pty.
 	// (This also means if webshell is running as a session leader, then it
 	// should open any pts with O_NOCTTY set.)
-//	shell.cmd.SysProcAttr = &syscall.SysProcAttr{
-//		//Setsid: true,		// new session doesn't work because it steals term
-//		Setpgid: true,		// creating a new pgid doesn't work if pg leader
-//		Pgid: 0,
-//	}
-
+	//	shell.cmd.SysProcAttr = &syscall.SysProcAttr{
+	//		//Setsid: true,		// new session doesn't work because it steals term
+	//		Setpgid: true,		// creating a new pgid doesn't work if pg leader
+	//		Pgid: 0,
+	//	}
 
 	shell.cmd.Env = append(os.Environ(), "LD_PRELOAD="+*shellPreload)
 
@@ -82,28 +81,27 @@ func (b *BashShell) readLoop() {
 			Done bool
 			Pgid int
 			Exit int
-			Dir string
+			Dir  string
 		}
 		err := dec.Decode(&m)
 		if err != nil {
 			log.Println(err)
-			//close(b.exitCh)
-			//return
 		}
 
 		// Switch on message type
-		log.Printf("%+v", m)
-		if m.Pgid > 0 {
-			b.fgPgid = m.Pgid
-		} else if m.Done {
+		log.Printf("Parsed Message: %+v", m)
+		if m.Done {
 			b.exitCh <- m.Exit
 			b.fgPgid = m.Pgid
 			b.dir = m.Dir
+		} else if m.Pgid > 0 {
+			b.fgPgid = m.Pgid
 		} else {
 			b.dir = m.Dir
 		}
 	}
 
+	log.Print("Read loop ended")
 	close(b.exitCh)
 }
 
