@@ -36,6 +36,7 @@ var (
 	port = flag.Int("port", 3000, "Port at which to run the server over HTTP")
 	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
 	oil = flag.Bool("oil", false, "Use oil instead of bash")
+	fifo = flag.Bool("fifo", true, "Use named fifo instead of anonymous pipe")
 )
 
 var shell Shell
@@ -92,23 +93,38 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 	}()
 	go io.Copy(&stdout, ptmx)
 
-	dir, _ := ioutil.TempDir("", "webshell-*")
-	pipeName := path.Join(dir, "errpipe")
-	syscall.Mkfifo(pipeName, 0600)
-	// If you open only the read side, then you need to open with O_NONBLOCK
-	// and clear that flag after opening.
-	//	pipe, err := os.OpenFile(pipeName, os.O_RDONLY|syscall.O_NONBLOCK, 0600)
-	pipe, err := os.OpenFile(pipeName, os.O_RDWR, 0600)
-	if err != nil {
-		log.Println(err)
-		return
+	var pipe *os.File
+	if *fifo {
+		dir, _ := ioutil.TempDir("", "webshell-*")
+		pipeName := path.Join(dir, "errpipe")
+		syscall.Mkfifo(pipeName, 0600)
+		// If you open only the read side, then you need to open with O_NONBLOCK
+		// and clear that flag after opening.
+		//	pipe, err := os.OpenFile(pipeName, os.O_RDONLY|syscall.O_NONBLOCK, 0600)
+		pipe, err = os.OpenFile(pipeName, os.O_RDWR, 0600)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		defer func() {
+			pipe.Close()
+			os.Remove(pipeName)
+			os.Remove(dir)
+		}()
+		go io.Copy(&stderr, pipe)
+	} else {
+		var rdPipe *os.File
+		rdPipe, pipe, err = os.Pipe()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		go func() {
+			io.Copy(&stderr, rdPipe)
+			rdPipe.Close()
+			pipe.Close()
+		}()
 	}
-	defer func() {
-		pipe.Close()
-		os.Remove(pipeName)
-		os.Remove(dir)
-	}()
-	go io.Copy(&stderr, pipe)
 
 	// Reset stdio of runner before running a new command
 	err = shell.StdIO(nil, pts, pipe)
