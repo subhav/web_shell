@@ -1,6 +1,7 @@
 // Prototype Shell UI, for the Go sh package and external shell interpreters.
 //
 // Each command is allocated a pty for stdout and a (named) pipe for stderr.
+// An anonymous pipe would be better, but would require fd passing.
 //
 // This doesn't work for every command:
 // - If `less` can't open `/dev/tty`, it READS from stderr! Not stdin.
@@ -10,7 +11,6 @@
 //   with `sudo -S`. alias sudo="sudo -S" works.
 // Apparently according to POSIX, stderr is supposed to be open for both
 // reading and writing...
-// An anonymous pipe would be better, but would require fd passing.
 package main
 
 import (
@@ -35,6 +35,7 @@ var (
 	host = flag.String("host", "localhost", "Hostname at which to run the server")
 	port = flag.Int("port", 3000, "Port at which to run the server over HTTP")
 	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
+	oil = flag.Bool("oil", false, "Use oil instead of bash")
 )
 
 var shell Shell
@@ -53,6 +54,8 @@ func main() {
 
 	if *gosh {
 		shell, err = NewGoShell()
+	} else if *oil {
+		shell, err = NewFANOSShell()
 	} else {
 		shell, err = NewBashShell()
 	}
