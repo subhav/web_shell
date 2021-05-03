@@ -45,6 +45,7 @@ fi
 ################################################################################
 
 unset LD_PRELOAD
+unset SETPGRP_FD
 
 # Enable job control
 set -m
@@ -87,6 +88,9 @@ __cmd_run() {
 
 	# The command group forces the syntax to be checked before execution.
 	#
+	# Using source instead of eval makes `return` not break things
+	# But, now the echo runs in a subshell and there's an extra pipe :/
+	#
 	# TODO: Redirections in the eval directly on the command group would make
 	# syntax errors report to the outer stderr. But, it would also make it
 	# easier to break and accidentally write to the script's stdout/err. Those
@@ -97,9 +101,6 @@ __cmd_run() {
 	# So, fds 0-2,10-12(copies of 20-22),23-25(copies of 0-2),63(proc subst) are
 	# all set in the eval. However, all the extra fds are set to close on exec
 	# this way.
-
-	# Using source instead of eval makes `return` not break things
-	# But, now the echo runs in a subshell and there's an extra pipe :/
 	source <(echo "{
 $1
 }") <&20- >&21- 2>&22-
@@ -127,7 +128,7 @@ $1
 # the script.
 # This won't write back multi-line commands correctly without HISTTIMEFORMAT
 # set, but we can leave it to the user to do that.
-[[ -v __cmd_writeback_history ]] && set -o history
+[[ -v __cmd_writeback_history ]] && set -o history; \
 while read -r -d $'\0' method args; do
 	case $method in
 	"stdio")

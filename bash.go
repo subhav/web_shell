@@ -57,7 +57,7 @@ func NewBashShell() (*BashShell, error) {
 	//		Pgid: 0,
 	//	}
 
-	shell.cmd.Env = append(os.Environ(), "LD_PRELOAD="+*shellPreload)
+	shell.cmd.Env = append(os.Environ(), "LD_PRELOAD="+*shellPreload, "SETPGRP_FD=24")
 
 	shell.stdin, _ = shell.cmd.StdinPipe()
 	shell.stdout, _ = shell.cmd.StdoutPipe()
@@ -84,20 +84,21 @@ func (b *BashShell) readLoop() {
 			Dir  string
 		}
 		err := dec.Decode(&m)
+		// TODO: We can end up getting stuck looping on this error. Limit retries or ignore this "element"
 		if err != nil {
 			log.Println(err)
+			continue
 		}
 
-		// Switch on message type
 		log.Printf("Parsed Message: %+v", m)
+		if m.Pgid > 0 {
+			b.fgPgid = m.Pgid
+		}
+		if m.Dir != "" {
+			b.dir = m.Dir
+		}
 		if m.Done {
 			b.exitCh <- m.Exit
-			b.fgPgid = m.Pgid
-			b.dir = m.Dir
-		} else if m.Pgid > 0 {
-			b.fgPgid = m.Pgid
-		} else {
-			b.dir = m.Dir
 		}
 	}
 
@@ -142,6 +143,8 @@ func (b *BashShell) StdIO(in, out, err *os.File) error {
 }
 
 func (b *BashShell) Run(ctx context.Context, cmd io.Reader) error {
+	// TODO: error handle quit process
+
 	fmt.Fprintln(b.stdin, "run")
 	io.Copy(b.stdin, cmd)
 	b.stdin.Write([]byte{0})
@@ -149,6 +152,7 @@ func (b *BashShell) Run(ctx context.Context, cmd io.Reader) error {
 	// - bash is trying to read from us
 	// - bash dies
 	select {
+	// TODO: if exitCh is closed, this will still read a 0
 	case exit := <-b.exitCh:
 		if exit != 0 {
 			return errors.New("exit code: " + strconv.Itoa(exit))
