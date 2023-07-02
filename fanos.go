@@ -18,7 +18,7 @@ var (
 )
 
 type FANOSShell struct {
-	cmd *exec.Cmd
+	cmd    *exec.Cmd
 	socket *os.File
 
 	in, out, err *os.File
@@ -64,7 +64,8 @@ func (s *FANOSShell) Run(ctx context.Context, r io.Reader) error {
 
 	var buf bytes.Buffer
 	buf.WriteString("EVAL ")
-	_, err := io.Copy(&buf, r); if err != nil {
+	_, err := io.Copy(&buf, r)
+	if err != nil {
 		return err
 	}
 
