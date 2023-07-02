@@ -163,22 +163,22 @@ func Run(req io.Reader) (CommandOut, error) {
 }
 
 func HandleRun(w http.ResponseWriter, req *http.Request) {
-	go func() {
-		output, err := Run(req.Body)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		log.Println(req.Body)
-		o, err := json.Marshal(output)
-		if err != nil {
-			log.Println(err)
-		}
-		_, err = w.Write(o)
-		if err != nil {
-			log.Println(err)
-		}
-	}()
+
+	output, err := Run(req.Body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println(req.Body)
+	o, err := json.Marshal(output)
+	if err != nil {
+		log.Println(err)
+	}
+	_, err = w.Write(o)
+	if err != nil {
+		log.Println(err)
+	}
+
 }
 
 func HandleCancel(w http.ResponseWriter, req *http.Request) {
