@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"mvdan.cc/sh/v3/interp"
@@ -39,4 +40,7 @@ func (s *GoShell) Run(ctx context.Context, r io.Reader) error {
 }
 func (s *GoShell) Dir() string {
 	return s.Runner.Dir
+}
+func (b *GoShell) Complete(ctx context.Context, cmd io.Reader) ([]string, error) {
+	return nil, errors.New("unimplemented")
 }
