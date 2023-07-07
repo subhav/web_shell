@@ -18,9 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
-	"fmt"
 	"github.com/buildkite/terminal-to-html/v3"
 	"github.com/creack/pty"
 	"io"
@@ -49,6 +47,7 @@ var shell Shell
 type Shell interface {
 	StdIO(*os.File, *os.File, *os.File) error
 	Run(context.Context, io.Reader) error
+	Complete(context.Context, io.Reader) error
 	Dir() string
 }
 
@@ -57,6 +56,8 @@ type CommandOut struct {
 	Stdout, Stderr string
 	Err            error
 }
+
+type runner func(ctx context.Context, cmd io.Reader) error
 
 func main() {
 	flag.Parse()
@@ -77,11 +78,12 @@ func main() {
 
 	if *test {
 		os.Stdout.Write([]byte("helo"))
-		completion, _ := Complete(strings.NewReader("git s"))
+		completion, _ := Exec(shell.Complete, strings.NewReader("git s"))
 		log.Println(completion)
 		return
 	}
 	http.HandleFunc("/run", HandleRun)
+	http.HandleFunc("/complete", HandleComplete)
 	http.HandleFunc("/cancel", HandleCancel)
 	http.Handle("/", http.FileServer(http.Dir("./web")))
 	log.Fatal(http.ListenAndServe(*host+":"+strconv.Itoa(*port), nil))
@@ -90,7 +92,7 @@ func main() {
 var runMu sync.Mutex
 var runCancel context.CancelFunc = func() {}
 
-func Run(req io.Reader) (CommandOut, error) {
+func Exec(run runner, req io.Reader) (CommandOut, error) {
 	var output CommandOut
 	runMu.Lock()
 	defer runMu.Unlock()
@@ -150,7 +152,7 @@ func Run(req io.Reader) (CommandOut, error) {
 		log.Println(err)
 		return output, err
 	}
-	err = shell.Run(runCtx, req)
+	err = run(runCtx, req)
 	if err != nil {
 		log.Println(err)
 	}
@@ -164,12 +166,11 @@ func Run(req io.Reader) (CommandOut, error) {
 
 func HandleRun(w http.ResponseWriter, req *http.Request) {
 
-	output, err := Run(req.Body)
+	output, err := Exec(shell.Run, req.Body)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	log.Println(req.Body)
 	o, err := json.Marshal(output)
 	if err != nil {
 		log.Println(err)
@@ -178,33 +179,25 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
+}
 
+func HandleComplete(w http.ResponseWriter, req *http.Request) {
+	output, err := Exec(shell.Complete, req.Body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	o, err := json.Marshal(output)
+	if err != nil {
+		log.Println(err)
+	}
+	_, err = w.Write(o)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func HandleCancel(w http.ResponseWriter, req *http.Request) {
 	log.Print("Received cancel")
 	runCancel()
-}
-
-// currently bash complete only, wrapper around "Run"
-func Complete(req io.Reader) (string, error) {
-	buf, err := ioutil.ReadAll(req)
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
-	prog, _, hasArgs := strings.Cut(string(buf[:]), " ")
-	if hasArgs {
-		comm := fmt.Sprintf("complete -p '%s' | sed s/^complete/compgen/", prog)
-		log.Println(comm)
-		completion, _ := Run(strings.NewReader(comm))
-		log.Println(completion.Stdout)
-		out, _ := Run(strings.NewReader(completion.Stdout))
-		log.Println(out.Stdout)
-		return out.Stdout, nil
-	} else {
-		// TODO Search $path/bash builtins/etc.
-		return "", errors.New("Not yet implemented")
-	}
-	//
 }

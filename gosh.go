@@ -40,3 +40,6 @@ func (s *GoShell) Run(ctx context.Context, r io.Reader) error {
 func (s *GoShell) Dir() string {
 	return s.Runner.Dir
 }
+func (b *GoShell) Complete(ctx context.Context, cmd io.Reader) error {
+	return nil
+}

@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	shellPath    = flag.String("shell", "/bin/bash", "Path to shell interpreter")
+	shellPath    = flag.String("shell", "/run/current-system/sw/bin/bash", "Path to shell interpreter")
 	shellScript  = flag.String("shell_script", "command_server.sh", "Command server script")
 	shellPreload *string
 )
@@ -146,6 +146,31 @@ func (b *BashShell) Run(ctx context.Context, cmd io.Reader) error {
 	// TODO: error handle quit process
 
 	fmt.Fprintln(b.stdin, "run")
+	io.Copy(b.stdin, cmd)
+	b.stdin.Write([]byte{0})
+	// What if?
+	// - bash is trying to read from us
+	// - bash dies
+	select {
+	// TODO: if exitCh is closed, this will still read a 0
+	case exit := <-b.exitCh:
+		if exit != 0 {
+			return errors.New("exit code: " + strconv.Itoa(exit))
+		}
+	case <-ctx.Done():
+		b.cancel()
+		exit := <-b.exitCh
+		if exit != 0 {
+			return errors.New("exit code: " + strconv.Itoa(exit))
+		}
+	}
+	return nil
+}
+
+func (b *BashShell) Complete(ctx context.Context, cmd io.Reader) error {
+	// TODO: error handle quit process
+
+	fmt.Fprintln(b.stdin, "complete")
 	io.Copy(b.stdin, cmd)
 	b.stdin.Write([]byte{0})
 	// What if?

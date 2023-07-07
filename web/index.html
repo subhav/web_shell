@@ -14,6 +14,9 @@
             if (e.key === 'c' && e.ctrlKey) {
                 handleCancel(e);
             }
+            if (e.key === 'Tab' && !e.shiftKey) {
+                handleComplete(e);
+            }
         });
         document.getElementById("log").addEventListener("dblclick", function(e) {
             for (let el of e.composedPath().reverse()) {
@@ -33,7 +36,8 @@
             return
         }
 
-        let wrapper = createLogElement(command);
+        const logEl = document.getElementById("log");
+        let wrapper = createLogElement(logEl, command);
 
         commandEl.value = "";
         commandEl.disabled = true;
@@ -59,14 +63,13 @@
         document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
     }
 
-    function createLogElement(command) {
+    function createLogElement(el, command) {
         // Yuck
-        const logEl = document.getElementById("log");
         let wrapperEl = document.createElement("details");
 
         const summaryEl = document.createElement("summary");
         let codeEl = document.createElement("code");
-        logEl.append(wrapperEl);
+        el.append(wrapperEl);
         wrapperEl.append(summaryEl);
         summaryEl.append(codeEl);
         codeEl.textContent = command;
@@ -109,6 +112,51 @@
         });
     }
 
+    async function handleComplete(event) {
+        event.preventDefault();
+        const commandEl = document.getElementById("command");
+        const completionEl = document.getElementById("completion");
+        const command = commandEl.value;
+        if (!command) {
+            return
+        }
+        let listEl = document.createElement("ul");
+
+        //commandEl.value = "";
+        //commandEl.disabled = true;
+        let json;
+        try {
+            const resp = await fetch("/complete", {
+                method: "POST",
+                body: command,
+            });
+            json = await resp.json();
+        } catch (error) {
+            console.error(error);
+            return
+        }
+
+        // Delete existing completions
+        completionEl.innerHTML = '';
+        let wrapper = createLogElement(completionEl, command);
+        updateLogElement(wrapper, json);
+        updateCompletionList(listEl, json);
+
+        //document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
+    }
+
+    function updateCompletionList(listEl, resp) {
+        if (resp.Err) {
+            return
+        }
+        for (line in resp.Stdout.split(' ')) {
+            let li = document.createElement("li");
+            li.classList.add("completion-element");
+            li.innerHTML = line;
+            listEl.append(li);
+        }
+    }
+
     window.onload = main;
 </script>
 <link href="terminal.css" rel="stylesheet">
@@ -145,4 +193,5 @@
         <textarea name="command" id="command"></textarea>
         <button type="submit">Run</button>
     </form>
+    <div id="completion"></div>
 </body>

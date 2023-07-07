@@ -122,6 +122,22 @@ $1
 	echo "{\"Done\": true, \"Exit\": $__cmd_last_status, \"Dir\": \"$dir\"}"
 }
 
+__cmd_complete() {
+    prog="${1%% *}"
+    if [[ "${#1}" -gt "${#prog}" ]]; then
+        # argument parsing
+        comp_command="$(complete -p "$prog" | sed s/^complete/compgen/)"
+        if [[ -z "$comp_command" ]]; then
+            echo ""
+        else
+            #echo $comp_command
+            echo "${comp_command% *} \"${1}\""
+            __cmd_run "${comp_command% *} \"${1}\""
+        fi
+    else
+        __cmd_run "compgen -abc $prog | sort -u"
+    fi
+}
 # Main Loop
 #
 # Turn on history in the same line as the loop so that it's the last command in
@@ -138,6 +154,9 @@ while read -r -d $'\0' method args; do
 	"run")
 		__cmd_run "$args"
 		;;
+	"complete")
+	    __cmd_complete "$args"
+	    ;;
 	"dir")
 		dir="${PWD//\\/\\\\}"
 		dir="${dir//\"/\\\"}"
