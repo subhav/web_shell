@@ -36,8 +36,7 @@
             return
         }
 
-        const logEl = document.getElementById("log");
-        let wrapper = createLogElement(logEl, command);
+        let wrapper = createLogElement(command);
 
         commandEl.value = "";
         commandEl.disabled = true;
@@ -63,13 +62,14 @@
         document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
     }
 
-    function createLogElement(el, command) {
+    function createLogElement(command) {
         // Yuck
+        const logEl = document.getElementById("log");
         let wrapperEl = document.createElement("details");
 
         const summaryEl = document.createElement("summary");
         let codeEl = document.createElement("code");
-        el.append(wrapperEl);
+        logEl.append(wrapperEl);
         wrapperEl.append(summaryEl);
         summaryEl.append(codeEl);
         codeEl.textContent = command;
@@ -115,15 +115,12 @@
     async function handleComplete(event) {
         event.preventDefault();
         const commandEl = document.getElementById("command");
-        const completionEl = document.getElementById("completion");
         const command = commandEl.value;
         if (!command) {
             return
         }
-        let listEl = document.createElement("ul");
+        let listEl = document.getElementById("completion-list");
 
-        //commandEl.value = "";
-        //commandEl.disabled = true;
         let json;
         try {
             const resp = await fetch("/complete", {
@@ -137,24 +134,18 @@
         }
 
         // Delete existing completions
-        completionEl.innerHTML = '';
-        let wrapper = createLogElement(completionEl, command);
-        updateLogElement(wrapper, json);
+        listEl.innerHTML = '';
         updateCompletionList(listEl, json);
-
-        //document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
     }
 
     function updateCompletionList(listEl, resp) {
-        if (resp.Err) {
-            return
-        }
-        for (line in resp.Stdout.split(' ')) {
+        for (const i in resp) {
             let li = document.createElement("li");
             li.classList.add("completion-element");
-            li.innerHTML = line;
+            li.innerHTML = resp[i];
             listEl.append(li);
         }
+        console.log(resp)
     }
 
     window.onload = main;
@@ -193,5 +184,5 @@
         <textarea name="command" id="command"></textarea>
         <button type="submit">Run</button>
     </form>
-    <div id="completion"></div>
+    <div id="completion"><ul id="completion-list"></ul></div>
 </body>

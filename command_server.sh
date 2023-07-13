@@ -123,20 +123,24 @@ $1
 }
 
 __cmd_complete() {
-    prog="${1%% *}"
+	local compgen_out
+    local prog="${1%% *}"
     if [[ "${#1}" -gt "${#prog}" ]]; then
         # argument parsing
         comp_command="$(complete -p "$prog" | sed s/^complete/compgen/)"
         if [[ -z "$comp_command" ]]; then
-            echo ""
+            compgen_out=""
         else
-            #echo $comp_command
-            echo "${comp_command% *} \"${1}\""
-            __cmd_run "${comp_command% *} \"${1}\""
+#            echo "${comp_command% *} \"${1}\""
+            compgen_out=$(${comp_command% *} "${1}")
         fi
     else
-        __cmd_run "compgen -abc $prog | sort -u"
+        compgen_out=$(compgen -abc $prog | sort -u)
     fi
+
+    compgen_out="${compgen_out//$'\n'/\\n}"
+	echo "{\"Complete\": \" $compgen_out \"}"
+
 }
 # Main Loop
 #

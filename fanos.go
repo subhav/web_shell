@@ -97,6 +97,6 @@ func (s *FANOSShell) Dir() string {
 	return ""
 }
 
-func (b *FANOSShell) Complete(ctx context.Context, cmd io.Reader) error {
-	return nil
+func (b *FANOSShell) Complete(ctx context.Context, cmd io.Reader) ([]string, error) {
+	return nil, nil
 }

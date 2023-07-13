@@ -28,7 +28,6 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 )
@@ -39,7 +38,6 @@ var (
 	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
 	oil  = flag.Bool("oil", false, "Use oil instead of bash")
 	fifo = flag.Bool("fifo", true, "Use named fifo instead of anonymous pipe")
-	test = flag.Bool("test", false, "test a function ad-hoc, used for development")
 )
 
 var shell Shell
@@ -47,7 +45,7 @@ var shell Shell
 type Shell interface {
 	StdIO(*os.File, *os.File, *os.File) error
 	Run(context.Context, io.Reader) error
-	Complete(context.Context, io.Reader) error
+	Complete(context.Context, io.Reader) ([]string, error)
 	Dir() string
 }
 
@@ -56,8 +54,6 @@ type CommandOut struct {
 	Stdout, Stderr string
 	Err            error
 }
-
-type runner func(ctx context.Context, cmd io.Reader) error
 
 func main() {
 	flag.Parse()
@@ -76,12 +72,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if *test {
-		os.Stdout.Write([]byte("helo"))
-		completion, _ := Exec(shell.Complete, strings.NewReader("git s"))
-		log.Println(completion)
-		return
-	}
 	http.HandleFunc("/run", HandleRun)
 	http.HandleFunc("/complete", HandleComplete)
 	http.HandleFunc("/cancel", HandleCancel)
@@ -92,7 +82,7 @@ func main() {
 var runMu sync.Mutex
 var runCancel context.CancelFunc = func() {}
 
-func Exec(run runner, req io.Reader) (CommandOut, error) {
+func Run(req io.Reader) (CommandOut, error) {
 	var output CommandOut
 	runMu.Lock()
 	defer runMu.Unlock()
@@ -152,7 +142,7 @@ func Exec(run runner, req io.Reader) (CommandOut, error) {
 		log.Println(err)
 		return output, err
 	}
-	err = run(runCtx, req)
+	err = shell.Run(runCtx, req)
 	if err != nil {
 		log.Println(err)
 	}
@@ -165,12 +155,12 @@ func Exec(run runner, req io.Reader) (CommandOut, error) {
 }
 
 func HandleRun(w http.ResponseWriter, req *http.Request) {
-
-	output, err := Exec(shell.Run, req.Body)
+	output, err := Run(req.Body)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	log.Println(req.Body)
 	o, err := json.Marshal(output)
 	if err != nil {
 		log.Println(err)
@@ -179,15 +169,16 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
+
 }
 
 func HandleComplete(w http.ResponseWriter, req *http.Request) {
-	output, err := Exec(shell.Complete, req.Body)
+	out, err := shell.Complete(context.Background(), req.Body)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	o, err := json.Marshal(output)
+	o, err := json.Marshal(out)
 	if err != nil {
 		log.Println(err)
 	}
