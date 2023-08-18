@@ -32,6 +32,7 @@ static int stdout_fd = 1;
 void __attribute__((constructor)) inject_init() {
 	// Bash overwrites `getenv` with a version that looks for Bash variables.
 	// We can't use it, since Bash hasn't started at this point, so we scan __environ ourselves.
+  // TODO: On android we have to use 'environ' instead of '__environ'
 	for (int i = 0; __environ[i] != NULL; i++) {
 		if (strstr(__environ[i], "SETPGRP_FD=") == __environ[i]) { // substring is at the start
 			char* val = &(__environ[i][11]); // length of "SETPGRP_FD=" is 11

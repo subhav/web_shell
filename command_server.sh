@@ -11,6 +11,8 @@ if [[ $SHELLOPTS =~ (^|:)history($|:) ]]; then
 	__cmd_writeback_history=1
 fi
 
+source ./complete.sh
+
 ################################################################################
 # Simple debug wrapper which exposes the shell state to a controlling process.
 #
@@ -122,6 +124,15 @@ $1
 	echo "{\"Done\": true, \"Exit\": $__cmd_last_status, \"Dir\": \"$dir\"}"
 }
 
+__cmd_complete() {
+	local compgen_out
+	compgen_out=$(__completion_print "$*")
+	compgen_out="${compgen_out//$'\n'/\\n}"
+	compgen_out="${compgen_out// /}"
+	#echo "{\"Complete\": \"$compgen_out\"}" >&2
+	echo "{\"Complete\": \"$compgen_out\"}"
+
+}
 # Main Loop
 #
 # Turn on history in the same line as the loop so that it's the last command in
@@ -129,7 +140,9 @@ $1
 # This won't write back multi-line commands correctly without HISTTIMEFORMAT
 # set, but we can leave it to the user to do that.
 [[ -v __cmd_writeback_history ]] && set -o history; \
-while read -r -d $'\0' method args; do
+# Without the IFS, it might split the arg
+# TODO: remove \n as (trimmable) IFS aswell and use Fprint instead of Fprintln
+while IFS=$'\n\0' read -r -d $'\0' method args; do
 	case $method in
 	"stdio")
 		# Reset IFS in case it gets overridden.
@@ -137,6 +150,9 @@ while read -r -d $'\0' method args; do
 		;;
 	"run")
 		__cmd_run "$args"
+		;;
+	"complete")
+		__cmd_complete "$args"
 		;;
 	"dir")
 		dir="${PWD//\\/\\\\}"

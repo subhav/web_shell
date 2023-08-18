@@ -14,6 +14,9 @@
             if (e.key === 'c' && e.ctrlKey) {
                 handleCancel(e);
             }
+            if (e.key === 'Tab' && !e.shiftKey) {
+                handleComplete(e);
+            }
         });
         document.getElementById("log").addEventListener("dblclick", function(e) {
             for (let el of e.composedPath().reverse()) {
@@ -32,6 +35,8 @@
         if (!command) {
             return
         }
+        const listEl = document.getElementById("completion-list");
+        listEl.innerHTML = '';
 
         let wrapper = createLogElement(command);
 
@@ -109,6 +114,64 @@
         });
     }
 
+    async function handleComplete(event) {
+        event.preventDefault();
+        const commandEl = document.getElementById("command");
+        const command = commandEl.value;
+        let words = command.split(" ")
+        const lastWord = words[words.length - 1]
+        if (!command) {
+            return
+        }
+        let listEl = document.getElementById("completion-list");
+        if (!listEl) {
+            return
+        }
+        // TODO: sometimes hangs
+        let curComp = document.getElementsByClassName("current-completion")[0];
+        if (curComp && curComp.innerHTML === lastWord) {
+            let nextComp = curComp.nextElementSibling;
+            if (nextComp == null) {
+                nextComp = listEl.firstElementChild;
+                if (nextComp == null) {
+                    return
+                }
+            }
+            curComp.classList.remove("current-completion");
+            nextComp.classList.add("current-completion");
+            words[words.length -1] = nextComp.innerHTML;
+            commandEl.value = words.join(" ");
+            return;
+        }
+
+        // Delete existing completions
+        listEl.innerHTML = '';
+        let json;
+        try {
+            const resp = await fetch("/complete", {
+                method: "POST",
+                body: command,
+            });
+            json = await resp.json();
+        } catch (error) {
+            console.error(error);
+            return
+        }
+
+        updateCompletionList(listEl, [ lastWord, ...json]);
+    }
+
+    function updateCompletionList(listEl, resp) {
+        for (const i in resp) {
+            let li = document.createElement("li");
+            li.classList.add("completion-element");
+            li.innerHTML = resp[i];
+            listEl.append(li);
+        }
+        // First element is what's in the prompt
+        listEl.firstElementChild.hidden = true;
+        listEl.firstElementChild.classList.add("current-completion")
+    }
     window.onload = main;
 </script>
 <link href="terminal.css" rel="stylesheet">
@@ -136,6 +199,9 @@
         height: 100px;
         width: 90%;
     }
+    .current-completion {
+      background-color: yellow;
+    }
 </style>
 </head>
 <body>
@@ -145,4 +211,5 @@
         <textarea name="command" id="command"></textarea>
         <button type="submit">Run</button>
     </form>
+    <div id="completion"><ul id="completion-list"></ul></div>
 </body>
