@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	fanosShellPath = flag.String("oil_path", "/usr/bin/oil", "Path to Oil shell interpreter")
+	fanosShellPath = flag.String("oils_path", "/usr/local/bin/osh", "Path to Oils interpreter (https://oils-for-unix.org/)")
 )
 
 type FANOSShell struct {

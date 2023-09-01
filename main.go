@@ -36,7 +36,7 @@ var (
 	host = flag.String("host", "localhost", "Hostname at which to run the server")
 	port = flag.Int("port", 3000, "Port at which to run the server over HTTP")
 	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
-	oil  = flag.Bool("oil", false, "Use oil instead of bash")
+	oils = flag.Bool("oils", false, "Use oil instead of bash")
 	fifo = flag.Bool("fifo", true, "Use named fifo instead of anonymous pipe")
 )
 
@@ -63,7 +63,7 @@ func main() {
 
 	if *gosh {
 		shell, err = NewGoShell()
-	} else if *oil {
+	} else if *oils {
 		shell, err = NewFANOSShell()
 	} else {
 		shell, err = NewBashShell()
