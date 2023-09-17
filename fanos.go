@@ -98,6 +98,6 @@ func (s *FANOSShell) Dir() string {
 	return ""
 }
 
-func (b *FANOSShell) Complete(ctx context.Context, cmd io.Reader) ([]string, error) {
+func (b *FANOSShell) Complete(ctx context.Context, comp CompletionReq) (*CompletionResult, error) {
 	return nil, errors.New("unimplemented")
 }

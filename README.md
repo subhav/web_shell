@@ -2,12 +2,14 @@ Proof-of-concept shell interface outside a terminal.
 
 This works with bash and the Go sh/interp package.
 
-![](screenshot.png) 
+![](screenshot.png)
 
 Build with:
 ```shell
 go generate
 go build
+npm update
+npm run build
 ```
 
 Run:
@@ -20,7 +22,7 @@ setsid ./web_shell
 
 Clean:
 ```shell
-rm web_shell lib/inject_tcsetpgrp.so
+rm web_shell lib/inject_tcsetpgrp.so web/assets/codemirror.js
 ```
 
 Shift-Enter to enter a new line.\

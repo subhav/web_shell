@@ -42,10 +42,32 @@ var (
 
 var shell Shell
 
+type CompletionReq struct {
+	Text string
+	Pos  int
+}
+
+type Completion struct {
+	Label        string `json:"label"`
+	DisplayLabel string `json:"displayLabel,omitempty"`
+	Detail       string `json:"detail,omitempty"`
+	Info         string `json:"info,omitempty"`
+	Apply        string `json:"apply,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Boost        int    `json:"boost,omitempty"`
+	Section      string `json:"section,omitempty"`
+}
+
+type CompletionResult struct {
+	From    int          `json:"from"`
+	To      int          `json:"to,omitempty"`
+	Options []Completion `json:"options"`
+}
+
 type Shell interface {
 	StdIO(*os.File, *os.File, *os.File) error
 	Run(context.Context, io.Reader) error
-	Complete(context.Context, io.Reader) ([]string, error)
+	Complete(context.Context, CompletionReq) (*CompletionResult, error)
 	Dir() string
 }
 
@@ -172,7 +194,13 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 }
 
 func HandleComplete(w http.ResponseWriter, req *http.Request) {
-	out, err := shell.Complete(context.Background(), req.Body)
+	var comp_req CompletionReq
+	err := json.NewDecoder(req.Body).Decode(&comp_req)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	out, err := shell.Complete(context.Background(), comp_req)
 	if err != nil {
 		log.Println(err)
 		return

@@ -176,16 +176,34 @@ func (b *BashShell) Run(ctx context.Context, cmd io.Reader) error {
 	return nil
 }
 
-func (b *BashShell) Complete(ctx context.Context, cmd io.Reader) ([]string, error) {
+func (b *BashShell) Complete(ctx context.Context, req CompletionReq) (*CompletionResult, error) {
+	r := req.Text
+
+	comps := CompletionResult{}
+	comps.To = len(req.Text)
+	if from := strings.LastIndex(r, " "); from == -1 {
+		comps.From = 0
+	} else {
+		comps.From = from + 1
+	}
 	fmt.Fprintln(b.stdin, "complete")
-	io.Copy(b.stdin, cmd)
+	io.Copy(b.stdin, strings.NewReader(req.Text))
 	b.stdin.Write([]byte{0})
 
 	select {
 	case complete := <-b.completeCh:
-		return strings.Split(complete, "\n"), nil
+		strings := strings.Split(complete, "\n")
+		comps.Options = make([]Completion, len(strings))
+		// check if string has \n or ' ' and return first indexof or 0
+		for i, string := range strings {
+			comps.Options[i] = Completion{
+				Label: string,
+			}
+		}
+		return &comps, nil
 	case <-ctx.Done():
 		//TODO: Cleanup
 	}
-	return nil, nil
+	comps.Options = make([]Completion, 0)
+	return &comps, nil
 }

@@ -1,0 +1,16 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "node esbuild.config.js",
+    "start": "node esbuild.config.js -w"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.2",
+    "esbuild-serve": "^1.0.1"
+  },
+  "dependencies": {
+    "@codemirror/legacy-modes": "github:codemirror/legacy-modes",
+    "codemirror": "^6.0.1"
+  }
+}
