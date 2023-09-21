@@ -1,27 +1,28 @@
 import {EditorState} from "@codemirror/state"
-import {EditorView,keymap} from "@codemirror/view"
+import {EditorView,KeyBinding,keymap} from "@codemirror/view"
 import {basicSetup} from "codemirror"
-import {defaultKeymap} from "@codemirror/commands"
+import {defaultKeymap,insertNewline} from "@codemirror/commands"
 import {shell} from "@codemirror/legacy-modes/mode/shell"
 import {StreamLanguage,
   defaultHighlightStyle,
   syntaxHighlighting} from "@codemirror/language"
 
-import {CompletionContext, CompletionResult, autocompletion} from "@codemirror/autocomplete"
+import {CompletionContext, autocompletion} from "@codemirror/autocomplete"
+import {complete, submit, CommandOut, Log} from "./web_shell"
 
-function myCompletions(context: CompletionContext) {
-  console.log(context)
-  let word = context.matchBefore(/\w*/)
-  if (word.from == word.to && !context.explicit)
-    return null
-  return {
-    from: word.from,
-    options: [
-      {label: "match", type: "keyword"},
-      {label: "hello", type: "variable", info: "(World)"},
-      {label: "magic", type: "text", apply: "⠁⭒*.✩.*⭒⠁", detail: "macro"}
-    ]
-  }
+function handleSubmit(view: EditorView, log: Log): boolean {
+    const command = view.state.doc.toString()
+    if (!command) {
+        return false
+    }
+
+    readonly = true
+    submit(command).then((out) => {
+        view.dispatch({ changes: {from:0, to: view.state.doc.toString().length, insert:''}})
+        readonly = false
+        log(command, out);
+    })
+    return true
 }
 
 async function shellComplete(context: CompletionContext) {
@@ -30,43 +31,49 @@ async function shellComplete(context: CompletionContext) {
     if (command.length == 0) {
         return null
     }
-
-    // Delete existing completions
-    let json;
-    try {
-        const resp = await fetch("/complete", {
-            method: "POST",
-            headers: {
-            'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({"text": command, "pos": pos}),
-        });
-        json = await resp.json();
-    } catch (error) {
-        console.error(error);
-        return
-    }
-    console.log(json)
-    return json[0]
+    return complete(command, pos)
 }
 
-let myAuto = autocompletion({
-    override: [shellComplete],
-  })
+let readonly = false
 
-let startState = EditorState.create({
-  doc: "Hello World",
-  extensions: [
-      keymap.of(defaultKeymap),
-      // completion function
-      myAuto,
-      StreamLanguage.define(shell),
-      basicSetup,
-      syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
-  ]
-})
+export function createCodemirror(log: Log, el: HTMLDivElement): EditorView {
+    let myAuto = autocompletion({
+        override: [shellComplete],
+    })
 
-let view = new EditorView({
-  state: startState,
-  parent: document.body
-})
+    // handle Enter key
+    const runCommand: KeyBinding =
+        {key: "Enter", run: (v: EditorView) => { return handleSubmit(v, log)}, shift: insertNewline }
+
+    let startState = EditorState.create({
+        doc: "",
+        extensions: [
+            keymap.of([runCommand]),
+            keymap.of(defaultKeymap),
+            // completion function
+            myAuto,
+            EditorState.readOnly.of(readonly),
+            StreamLanguage.define(shell),
+            basicSetup,
+            syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
+        ]
+    })
+
+    let view = new EditorView({
+        state: startState,
+        parent: el
+    })
+    let runButton = document.createElement("button")
+    runButton.setAttribute("type", "submit")
+    runButton.setAttribute("id", "RunButton")
+    runButton.innerHTML = "Run";
+    el.append(runButton)
+    document.addEventListener("click", (event)=>{
+        event.preventDefault();
+        const target = event.target.closest("#RunButton"); // Or any other selector.
+        if (target) {
+            return handleSubmit(view, log)
+        }
+    });
+    return view
+}

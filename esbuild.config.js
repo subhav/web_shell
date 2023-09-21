@@ -5,9 +5,9 @@ import esbuildServe from "esbuild-serve";
 esbuildServe(
   {
     logLevel: "info",
-    entryPoints: ["typescript/codemirror.ts"],
+    entryPoints: ["typescript/shell.ts"],
     bundle: true,
-    outfile: "web/assets/codemirror.js",
+    outfile: "web/assets/shell.js",
   },
   { root: "web" }
 );
