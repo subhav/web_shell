@@ -31,7 +31,8 @@ func init() {
 }
 
 type BashShell struct {
-	dir string
+	dir         string
+	completions string
 
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
@@ -39,8 +40,6 @@ type BashShell struct {
 
 	exitCh chan int
 	fgPgid int
-
-	completeCh chan string
 }
 
 func NewBashShell() (*BashShell, error) {
@@ -71,7 +70,6 @@ func NewBashShell() (*BashShell, error) {
 	}
 
 	shell.exitCh = make(chan int)
-	shell.completeCh = make(chan string)
 	go shell.readLoop()
 
 	return shell, nil
@@ -105,9 +103,8 @@ func (b *BashShell) readLoop() {
 		if m.Done {
 			b.exitCh <- m.Exit
 		}
-
 		if m.Complete != "" {
-			b.completeCh <- m.Complete
+			b.completions = m.Complete
 		}
 	}
 
@@ -191,13 +188,17 @@ func (b *BashShell) Complete(ctx context.Context, req CompletionReq) (*Completio
 	b.stdin.Write([]byte{0})
 
 	select {
-	case complete := <-b.completeCh:
-		strings := strings.Split(complete, "\n")
-		comps.Options = make([]Completion, len(strings))
+	case exit := <-b.exitCh:
+		if exit != 0 {
+			comps.Options = make([]Completion, 0)
+			return &comps, errors.New("exit code: " + strconv.Itoa(exit))
+		}
+		completions := strings.Split(b.completions, "\n")
+		comps.Options = make([]Completion, len(completions))
 		// check if string has \n or ' ' and return first indexof or 0
-		for i, string := range strings {
+		for i, completion := range completions {
 			comps.Options[i] = Completion{
-				Label: string,
+				Label: completion,
 			}
 		}
 		return &comps, nil

@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
