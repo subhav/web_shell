@@ -14,14 +14,6 @@ export interface Log {
     (command: string, output: CommandOut): void
 }
 
-// TODO: move to simple_prompt
-//document.addEventListener('keydown', function (e) { // Ctrl keys seem to only work with keydown
-//    // TODO: Only if currently running a command
-//    if (e.key === 'c' && e.ctrlKey) {
-//        cancel()
-//    }
-//})
-
 export async function submit(command: string) {
     if (!command) {
         return
@@ -46,11 +38,21 @@ export async function cancel() {
     });
 }
 
+let completionSignal: AbortController
+export async function cancelComplete() {
+    if(completionSignal) {
+        completionSignal.abort()
+    }
+}
+
 export async function complete(command: string, position: number) {
+    await cancelComplete()
+    completionSignal = new AbortController()
     let json;
     try {
         const resp = await fetch("/complete", {
             method: "POST",
+            signal: completionSignal.signal,
             headers: {
                 'Content-Type': 'application/json',
             },

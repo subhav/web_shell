@@ -7,8 +7,8 @@ import {StreamLanguage,
   defaultHighlightStyle,
   syntaxHighlighting} from "@codemirror/language"
 
-import {CompletionContext, autocompletion} from "@codemirror/autocomplete"
-import {complete, submit, CommandOut, Log} from "./web_shell"
+import {CompletionContext, autocompletion, moveCompletionSelection} from "@codemirror/autocomplete"
+import {cancelComplete, complete, submit, Log} from "./web_shell"
 
 function handleSubmit(view: EditorView, log: Log): boolean {
     const command = view.state.doc.toString()
@@ -26,6 +26,7 @@ function handleSubmit(view: EditorView, log: Log): boolean {
 }
 
 async function shellComplete(context: CompletionContext) {
+    context.addEventListener("abort", cancelComplete)
     const command = context.state.doc.toString()
     const pos = context.pos
     if (command.length == 0) {
@@ -37,21 +38,29 @@ async function shellComplete(context: CompletionContext) {
 let readonly = false
 
 export function createCodemirror(log: Log, el: HTMLDivElement): EditorView {
-    let myAuto = autocompletion({
+    let webshellCompletion = autocompletion({
         override: [shellComplete],
     })
 
     // handle Enter key
     const runCommand: KeyBinding =
         {key: "Enter", run: (v: EditorView) => { return handleSubmit(v, log)}, shift: insertNewline }
+    // handle Tab key
+    const runComplete: KeyBinding =
+        {
+        key: "Tab",
+        run: (v: EditorView) => { return moveCompletionSelection(true)(v)},
+        shift: (v: EditorView) => { return moveCompletionSelection(false)(v)},
+        preventDefault: true
+    }
 
     let startState = EditorState.create({
         doc: "",
         extensions: [
-            keymap.of([runCommand]),
+            keymap.of([runCommand, runComplete]),
             keymap.of(defaultKeymap),
             // completion function
-            myAuto,
+            webshellCompletion,
             EditorState.readOnly.of(readonly),
             StreamLanguage.define(shell),
             basicSetup,
@@ -75,5 +84,6 @@ export function createCodemirror(log: Log, el: HTMLDivElement): EditorView {
             return handleSubmit(view, log)
         }
     });
+    document.addEventListener("readystatechange", () => { view.focus() })
     return view
 }

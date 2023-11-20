@@ -193,14 +193,26 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 
 }
 
+var compCancel context.CancelFunc = func() {}
+
 func HandleComplete(w http.ResponseWriter, req *http.Request) {
-	var comp_req CompletionReq
-	err := json.NewDecoder(req.Body).Decode(&comp_req)
+	var compReq CompletionReq
+	err := json.NewDecoder(req.Body).Decode(&compReq)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	out, err := shell.Complete(context.Background(), comp_req)
+	if compCancel != nil {
+		compCancel()
+	}
+	runMu.Lock()
+	defer runMu.Unlock()
+	var compCtx context.Context
+
+	compCtx, compCancel = context.WithCancel(context.Background())
+	defer runCancel()
+
+	out, err := shell.Complete(compCtx, compReq)
 	if err != nil {
 		log.Println(err)
 		return
