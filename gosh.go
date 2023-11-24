@@ -41,6 +41,6 @@ func (s *GoShell) Run(ctx context.Context, r io.Reader) error {
 func (s *GoShell) Dir() string {
 	return s.Runner.Dir
 }
-func (b *GoShell) Complete(ctx context.Context, cmd io.Reader) ([]string, error) {
+func (b *GoShell) Complete(ctx context.Context, comp CompletionReq) (*CompletionResult, error) {
 	return nil, errors.New("unimplemented")
 }

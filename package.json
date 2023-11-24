@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.19.2",
+    "esbuild-serve": "^1.0.1"
+  },
+  "dependencies": {
+    "@codemirror/legacy-modes": "github:codemirror/legacy-modes",
+    "codemirror": "^6.0.1"
+  }
+}

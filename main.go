@@ -1,3 +1,4 @@
+//go:generate npm install
 // Prototype Shell UI, for the Go sh package and external shell interpreters.
 //
 // Each command is allocated a pty for stdout and a (named) pipe for stderr.
@@ -21,8 +22,8 @@ import (
 	"flag"
 	"github.com/buildkite/terminal-to-html/v3"
 	"github.com/creack/pty"
+	"github.com/evanw/esbuild/pkg/api"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -38,14 +39,38 @@ var (
 	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
 	oils = flag.Bool("oils", false, "Use oil instead of bash")
 	fifo = flag.Bool("fifo", true, "Use named fifo instead of anonymous pipe")
+	debug = flag.Bool("debug", false, "Watch and live reload typescript")
+	build = flag.Bool("buildonly", false, "build the typescript and exit")
 )
 
 var shell Shell
 
+type CompletionReq struct {
+	Text string
+	Pos  int
+}
+
+type Completion struct {
+	Label        string `json:"label"`
+	DisplayLabel string `json:"displayLabel,omitempty"`
+	Detail       string `json:"detail,omitempty"`
+	Info         string `json:"info,omitempty"`
+	Apply        string `json:"apply,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Boost        int    `json:"boost,omitempty"`
+	Section      string `json:"section,omitempty"`
+}
+
+type CompletionResult struct {
+	From    int          `json:"from"`
+	To      int          `json:"to,omitempty"`
+	Options []Completion `json:"options"`
+}
+
 type Shell interface {
 	StdIO(*os.File, *os.File, *os.File) error
 	Run(context.Context, io.Reader) error
-	Complete(context.Context, io.Reader) ([]string, error)
+	Complete(context.Context, CompletionReq) (*CompletionResult, error)
 	Dir() string
 }
 
@@ -60,6 +85,30 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	var err error
+
+	// Bundle javascript
+	buildCtx, err := api.Context(api.BuildOptions{
+		EntryPoints: []string{"typescript/shell.ts"},
+		Bundle:      true,
+		Outfile:     "web/assets/shell.js",
+		LogLevel:    api.LogLevelInfo,
+		Write:	     true,
+	})
+	// build a first time so even -debug -build works
+	result := buildCtx.Rebuild()
+	if len(result.Errors) > 0 {
+		log.Fatal("Bundler has errors", result.Errors)
+	}
+	if *debug {
+		err := buildCtx.Watch(api.WatchOptions{})
+		if err != nil {
+			log.Fatal("Can't watch typescript", err)
+		}
+	}
+	if *build {
+		log.Println("Build successful")
+		os.Exit(0)
+	}
 
 	if *gosh {
 		shell, err = NewGoShell()
@@ -105,7 +154,7 @@ func Run(req io.Reader) (CommandOut, error) {
 
 	var pipe *os.File
 	if *fifo {
-		dir, _ := ioutil.TempDir("", "webshell-*")
+		dir := os.TempDir()
 		pipeName := path.Join(dir, "errpipe")
 		syscall.Mkfifo(pipeName, 0600)
 		// If you open only the read side, then you need to open with O_NONBLOCK
@@ -171,8 +220,26 @@ func HandleRun(w http.ResponseWriter, req *http.Request) {
 
 }
 
+var compCancel context.CancelFunc = func() {}
+
 func HandleComplete(w http.ResponseWriter, req *http.Request) {
-	out, err := shell.Complete(context.Background(), req.Body)
+	var compReq CompletionReq
+	err := json.NewDecoder(req.Body).Decode(&compReq)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	if compCancel != nil {
+		compCancel()
+	}
+	runMu.Lock()
+	defer runMu.Unlock()
+	var compCtx context.Context
+
+	compCtx, compCancel = context.WithCancel(context.Background())
+	defer runCancel()
+
+	out, err := shell.Complete(compCtx, compReq)
 	if err != nil {
 		log.Println(err)
 		return

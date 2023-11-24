@@ -130,8 +130,9 @@ __cmd_complete() {
 	compgen_out="${compgen_out//$'\n'/\\n}"
 	compgen_out="${compgen_out// /}"
 	#echo "{\"Complete\": \"$compgen_out\"}" >&2
-	echo "{\"Complete\": \"$compgen_out\"}"
-
+    # handle "no completion" as a single empty completion
+    # otherwise we have to detect if a completion command was run or not
+	echo "{\"Done\": true, \"Complete\": \"$compgen_out\"}"
 }
 # Main Loop
 #

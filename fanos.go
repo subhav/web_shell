@@ -4,13 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"flag"
+	"github.com/creack/pty"
+	"gopkg.in/alessio/shellescape.v1"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -98,6 +100,86 @@ func (s *FANOSShell) Dir() string {
 	return ""
 }
 
-func (b *FANOSShell) Complete(ctx context.Context, cmd io.Reader) ([]string, error) {
-	return nil, errors.New("unimplemented")
+func (s *FANOSShell) Complete(ctx context.Context, r CompletionReq) (*CompletionResult, error) {
+	comps := CompletionResult{}
+	comps.To = len(r.Text)
+	//// STDIO stuff
+	var stdout, stderr bytes.Buffer
+	ptmx, pts, err := pty.Open()
+	if err != nil {
+		log.Println(err)
+		return &comps, err
+	}
+	defer func() {
+		ptmx.Close()
+		pts.Close()
+	}()
+	go io.Copy(&stdout, ptmx)
+
+	var pipe *os.File
+	var rdPipe *os.File
+	rdPipe, pipe, err = os.Pipe()
+	if err != nil {
+		log.Println(err)
+		return &comps, err
+	}
+	go func() {
+		io.Copy(&stderr, rdPipe)
+		rdPipe.Close()
+		pipe.Close()
+	}()
+	// Reset stdio of runner before running a new command
+	err = shell.StdIO(nil, pts, pipe)
+	if err != nil {
+		log.Println(err)
+		return &comps, err
+	}
+
+	//// Run stuff
+	rights := syscall.UnixRights(int(s.in.Fd()), int(s.out.Fd()), int(s.err.Fd()))
+	s.StdIO(nil, nil, nil)
+	var buf bytes.Buffer
+	buf.WriteString("EVAL ")
+	_, err = io.Copy(&buf, strings.NewReader("compexport -c "+shellescape.Quote(r.Text)))
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	_, err = s.socket.Write([]byte(strconv.Itoa(buf.Len()) + ":"))
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	err = syscall.Sendmsg(int(s.socket.Fd()), buf.Bytes(), rights, nil, 0)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	_, err = s.socket.Write([]byte(","))
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	// TODO: Actually read netstring instead of reading until ','
+	sockReader := bufio.NewReader(s.socket)
+	msg, err := sockReader.ReadString(',')
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	log.Println(msg)
+
+	completions := strings.Split(stdout.String(), "\n")
+
+	comps.Options = make([]Completion, len(completions))
+	for i, completion := range completions {
+		log.Println(completion)
+		if len(completion) > 2 {
+			comps.Options[i] = Completion{
+				Label: completion[1 : len(completion)-2],
+			}
+		}
+	}
+	return &comps, nil
 }

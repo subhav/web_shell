@@ -2,7 +2,7 @@ Proof-of-concept shell interface outside a terminal.
 
 This works with bash and the Go sh/interp package.
 
-![](screenshot.png) 
+![](screenshot.png)
 
 Build with:
 ```shell
@@ -20,7 +20,9 @@ setsid ./web_shell
 
 Clean:
 ```shell
-rm web_shell lib/inject_tcsetpgrp.so
+rm web_shell lib/inject_tcsetpgrp.so web/assets/*
+# optionally delete all node modules
+rm -r node_modules
 ```
 
 Shift-Enter to enter a new line.\
