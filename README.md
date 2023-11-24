@@ -8,8 +8,6 @@ Build with:
 ```shell
 go generate
 go build
-npm update
-npm run build
 ```
 
 Run:
@@ -23,6 +21,8 @@ setsid ./web_shell
 Clean:
 ```shell
 rm web_shell lib/inject_tcsetpgrp.so web/assets/*
+# optionally delete all node modules
+rm -r node_modules
 ```
 
 Shift-Enter to enter a new line.\

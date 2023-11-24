@@ -1,3 +1,4 @@
+//go:generate npm install
 // Prototype Shell UI, for the Go sh package and external shell interpreters.
 //
 // Each command is allocated a pty for stdout and a (named) pipe for stderr.
@@ -21,8 +22,8 @@ import (
 	"flag"
 	"github.com/buildkite/terminal-to-html/v3"
 	"github.com/creack/pty"
+	"github.com/evanw/esbuild/pkg/api"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -38,6 +39,8 @@ var (
 	gosh = flag.Bool("gosh", false, "Use the sh package instead of bash")
 	oil  = flag.Bool("oil", false, "Use oil instead of bash")
 	fifo = flag.Bool("fifo", true, "Use named fifo instead of anonymous pipe")
+	debug = flag.Bool("debug", false, "Watch and live reload typescript")
+	build = flag.Bool("buildonly", false, "build the typescript and exit")
 )
 
 var shell Shell
@@ -83,6 +86,30 @@ func main() {
 
 	var err error
 
+	// Bundle javascript
+	buildCtx, err := api.Context(api.BuildOptions{
+		EntryPoints: []string{"typescript/shell.ts"},
+		Bundle:      true,
+		Outfile:     "web/assets/shell.js",
+		LogLevel:    api.LogLevelInfo,
+		Write:	     true,
+	})
+	// build a first time so even -debug -build works
+	result := buildCtx.Rebuild()
+	if len(result.Errors) > 0 {
+		log.Fatal("Bundler has errors", result.Errors)
+	}
+	if *debug {
+		err := buildCtx.Watch(api.WatchOptions{})
+		if err != nil {
+			log.Fatal("Can't watch typescript", err)
+		}
+	}
+	if *build {
+		log.Println("Build successful")
+		os.Exit(0)
+	}
+
 	if *gosh {
 		shell, err = NewGoShell()
 	} else if *oil {
@@ -127,7 +154,7 @@ func Run(req io.Reader) (CommandOut, error) {
 
 	var pipe *os.File
 	if *fifo {
-		dir, _ := ioutil.TempDir("", "webshell-*")
+		dir := os.TempDir()
 		pipeName := path.Join(dir, "errpipe")
 		syscall.Mkfifo(pipeName, 0600)
 		// If you open only the read side, then you need to open with O_NONBLOCK
